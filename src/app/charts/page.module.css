@@ -17,7 +17,8 @@
 
 .header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -34,6 +35,25 @@
 .headerPrice {
   font-size: 14px;
   color: #9198a1;
+}
+
+.regressionToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #9198a1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.regressionBars {
+  background: #131722;
+  color: #d1d4dc;
+  border: 1px solid #2a2e39;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 .status {

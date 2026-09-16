@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import CandleChart from "@/components/CandleChart";
 import SymbolList from "@/components/SymbolList";
 import SymbolInfoPanel from "@/components/SymbolInfoPanel";
-import type { Candle } from "@/lib/candles";
+import TimeframeSelector from "@/components/TimeframeSelector";
+import type { Candle, Timeframe } from "@/lib/candles";
 import { splitDescription, type SymbolInfo } from "@/lib/symbolInfo";
 import type { SymbolSummary } from "@/app/api/symbols/route";
 import styles from "./page.module.css";
@@ -12,11 +13,14 @@ import styles from "./page.module.css";
 export default function ChartsPage() {
   const [symbols, setSymbols] = useState<SymbolSummary[]>([]);
   const [symbol, setSymbol] = useState<string>("");
+  const [timeframe, setTimeframe] = useState<Timeframe>("15m");
+  const [showRegression, setShowRegression] = useState(false);
+  const [regressionBars, setRegressionBars] = useState(240);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [candlesFor, setCandlesFor] = useState<string | null>(null);
   const [symbolInfo, setSymbolInfo] = useState<SymbolInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const loading = symbol !== "" && candlesFor !== symbol;
+  const loading = symbol !== "" && candlesFor !== `${symbol}:${timeframe}`;
 
   useEffect(() => {
     fetch("/api/symbols")
@@ -35,8 +39,9 @@ export default function ChartsPage() {
   useEffect(() => {
     if (!symbol) return;
     let ignore = false;
+    const key = `${symbol}:${timeframe}`;
 
-    fetch(`/api/candles/${symbol}`)
+    fetch(`/api/candles/${symbol}?tf=${timeframe}`)
       .then((res) => res.json())
       .then((data: { candles: Candle[] } | { error: string }) => {
         if (ignore) return;
@@ -47,18 +52,18 @@ export default function ChartsPage() {
           setError(null);
           setCandles(data.candles);
         }
-        setCandlesFor(symbol);
+        setCandlesFor(key);
       })
       .catch((err) => {
         if (ignore) return;
         setError(String(err));
-        setCandlesFor(symbol);
+        setCandlesFor(key);
       });
 
     return () => {
       ignore = true;
     };
-  }, [symbol]);
+  }, [symbol, timeframe]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -107,12 +112,46 @@ export default function ChartsPage() {
                 ` (${selectedInfo.changePercent >= 0 ? "+" : ""}${selectedInfo.changePercent.toFixed(2)}%)`}
             </span>
           )}
+          <label className={styles.regressionToggle}>
+            <input
+              type="checkbox"
+              checked={showRegression}
+              onChange={(e) => setShowRegression(e.target.checked)}
+            />
+            Regressione lineare
+          </label>
+          {showRegression && (
+            <select
+              className={styles.regressionBars}
+              value={regressionBars === Infinity ? "all" : regressionBars}
+              onChange={(e) =>
+                setRegressionBars(
+                  e.target.value === "all" ? Infinity : Number(e.target.value)
+                )
+              }
+            >
+              <option value={50}>50 candele</option>
+              <option value={100}>100 candele</option>
+              <option value={240}>240 candele</option>
+              <option value={500}>500 candele</option>
+              <option value="all">Tutte</option>
+            </select>
+          )}
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
         </div>
 
         {error && <p className={styles.error}>Errore: {error}</p>}
         {loading && <p className={styles.status}>Caricamento {symbol}...</p>}
         {!loading && !error && candles.length > 0 && (
-          <CandleChart candles={candles} />
+          <CandleChart
+            candles={candles}
+            showRegression={showRegression}
+            regressionBars={
+              regressionBars === Infinity ? undefined : regressionBars
+            }
+            symbol={symbol}
+            timeframe={timeframe}
+          />
         )}
 
         {symbol && <SymbolInfoPanel symbol={symbol} info={symbolInfo} />}
