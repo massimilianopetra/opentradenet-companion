@@ -38,3 +38,55 @@ export async function readCandles(symbol: string): Promise<Candle[]> {
 
   return candles;
 }
+
+export interface CandleChange {
+  price: number | null;
+  changePercent: number | null;
+}
+
+/**
+ * Derives current price and % change from the last `periods` 15m candles
+ * (default 96 = 24h) instead of the coarser data/prices/{SYMBOL}.csv snapshots,
+ * which are recorded at irregular intervals.
+ */
+export async function readLatestCandleChange(
+  symbol: string,
+  periods = 96
+): Promise<CandleChange | null> {
+  assertValidSymbol(symbol);
+  const filePath = path.join(
+    getDataDir(),
+    "candles",
+    symbol,
+    `${symbol}_15m.csv`
+  );
+
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+
+  const rows = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(1); // drop header
+
+  if (rows.length === 0) return null;
+
+  const closeOf = (row: string) => Number(row.split(",")[4]);
+  const price = closeOf(rows[rows.length - 1]);
+
+  const compareIndex = rows.length - 1 - periods;
+  if (compareIndex < 0) {
+    return { price, changePercent: null };
+  }
+
+  const previousPrice = closeOf(rows[compareIndex]);
+  const changePercent =
+    previousPrice !== 0 ? ((price - previousPrice) / previousPrice) * 100 : null;
+
+  return { price, changePercent };
+}

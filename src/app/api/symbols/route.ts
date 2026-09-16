@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { getDataDir } from "@/lib/dataDir";
-import { readLatestPriceChange } from "@/lib/prices";
+import { readLatestCandleChange } from "@/lib/candlesServer";
 import { readSymbolsInfo } from "@/lib/symbolInfoServer";
 import { readFavorites } from "@/lib/favoritesStore";
 
@@ -43,13 +43,13 @@ export async function GET() {
 
   const result: SymbolSummary[] = await Promise.all(
     symbols.map(async (symbol) => {
-      const priceChange = await readLatestPriceChange(symbol);
+      const candleChange = await readLatestCandleChange(symbol);
       return {
         symbol,
         description: info[symbol]?.description,
         assetType: info[symbol]?.asset_type,
-        price: priceChange?.price ?? null,
-        changePercent: priceChange?.changePercent ?? null,
+        price: candleChange?.price ?? null,
+        changePercent: candleChange?.changePercent ?? null,
         favorite: favoriteSet.has(symbol),
       };
     })
