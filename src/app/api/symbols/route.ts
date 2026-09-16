@@ -16,10 +16,9 @@ export interface SymbolSummary {
 }
 
 export async function GET() {
-  const dataDir = getDataDir();
-
   let entries;
   try {
+    const dataDir = getDataDir();
     entries = await readdir(path.join(dataDir, "candles"), {
       withFileTypes: true,
     });
