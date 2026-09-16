@@ -1,0 +1,10 @@
+.shell {
+  display: flex;
+  min-height: 100vh;
+  background: #0b0e11;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}

@@ -1,38 +1,44 @@
 # opentradenet-companion
 
-Companion webapp for [`opentradenet_bot`](../opentradenet_bot) — see [`CLAUDE.md`](./CLAUDE.md) for what this project is, its relationship to the bot, and the current plan. This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Browser-based companion webapp for [`opentradenet_bot`](../opentradenet_bot), a single-user Telegram bot that monitors prices and manages positions on Hyperliquid. The bot has no UI beyond Telegram commands; this app gives the same user a friendlier way to look at charts and quotes built from the bot's data.
 
-## Getting Started
+Built with [Next.js](https://nextjs.org) (App Router, TypeScript) and [`lightweight-charts`](https://www.tradingview.com/lightweight-charts/).
 
-First, run the development server:
+## Relationship to opentradenet_bot
+
+- Reads the bot's `data/` directory **read-only**, from a path configured via `OPENTRADENET_DATA_DIR` (see `.env`). It never touches `data/wallet/`, `data/conditional_orders/`, or `data/journal/`, never places orders, and has no access to the bot's Hyperliquid API keys.
+- Runs as its own process, deployed alongside the bot on the same host.
+- No application-level auth — access is controlled at the network level (VPN to a fixed IP), by design for a single trusted user.
+
+## Features
+
+- **Sidebar navigation** with room for future sections (Segnali, Analisi are placeholders for work not started yet).
+- **Charts** (`/charts`): candlestick + volume chart per symbol, powered by 15-minute OHLCV candles from `data/candles/{SYMBOL}/{SYMBOL}_15m.csv`.
+- **Symbol list**, sorted by daily % change (derived from `data/prices/{SYMBOL}.csv`), colored green/red for gains/losses.
+  - Search box to filter by ticker or company/asset name on the fly.
+  - Star a symbol to mark it as favorite; toggle the list between "Tutti" and "Preferiti". Favorites are companion-app state, stored locally in this project's own `data/favorites.json` (gitignored) — not written to the bot's data directory.
+- **Symbol info panel** below the chart, showing what the instrument is, market/exchange, currency, leverage, session hours, etc., from `data/symbols_info.json`.
+
+## Data this project reads
+
+- `data/candles/{SYMBOL}/{SYMBOL}_15m.csv` — 15m OHLCV candles.
+- `data/prices/{SYMBOL}.csv` — daily price snapshots, used for % change.
+- `data/symbols_info.json` — market metadata (description, exchange, leverage, session hours).
+
+## Getting started
 
 ```bash
+npm install
+cp .env.local.example .env.local   # set OPENTRADENET_DATA_DIR to the bot's data/ directory
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+No test suite or lint config beyond the Next.js defaults exists yet.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Roadmap
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Indicator panes (EMA, Bollinger, RSI, MACD, Ichimoku) computed by the bot's Python code and rendered as additional chart panes.
+- A live signals feed once the bot's scanner persists detected opportunities to disk.
+- An ML/algo "probability of success" ranking page — deferred until the underlying model is retrained and reviewed.

@@ -1,0 +1,50 @@
+.panel {
+  border: 1px solid #2a2e39;
+  border-radius: 8px;
+  padding: 16px 20px;
+  background: #131722;
+}
+
+.empty {
+  color: #666;
+  font-size: 14px;
+}
+
+.detail {
+  font-size: 14px;
+  color: #d1d4dc;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.notes {
+  font-size: 13px;
+  color: #9198a1;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px 20px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #666;
+}
+
+.value {
+  font-size: 13px;
+  color: #d1d4dc;
+  margin: 0;
+}

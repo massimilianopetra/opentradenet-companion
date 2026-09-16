@@ -32,9 +32,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
 
 # vercel
 .vercel
+
+# local companion-app state (favorites, etc.) — not opentradenet_bot's data dir
+/data
 
 # local-only project notes (not committed)
 CLAUDE.md
