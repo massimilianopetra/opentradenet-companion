@@ -122,6 +122,13 @@
   color: #5b8def;
 }
 
+.toolButtonDanger,
+.toolButtonDanger:hover {
+  background: rgba(239, 83, 80, 0.18);
+  border-color: #ef5350;
+  color: #ef5350;
+}
+
 .toolFlyout {
   position: absolute;
   left: calc(100% + 8px);

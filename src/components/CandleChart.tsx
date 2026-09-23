@@ -34,7 +34,9 @@ const SIGNAL_COLOR = "#ffd700";
 
 const HLINE_PALETTE = ["#ff9f43", "#5b8def", "#ef5350", "#26a69a", "#a78bfa", "#d1d4dc"];
 
-type Tool = "measure" | "hline" | null;
+type Tool = "measure" | "hline" | "delete" | null;
+
+const DELETE_HIT_TOLERANCE_PX = 8;
 
 const REGRESSION_BAR_OPTIONS = [50, 100, 240, 500] as const;
 
@@ -83,6 +85,29 @@ function HLineIcon() {
         strokeWidth="3"
         strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 7h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 7l1 12.5A1.5 1.5 0 0 0 9.5 21h5a1.5 1.5 0 0 0 1.5-1.5L17 7"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -226,9 +251,30 @@ export default function CandleChart({
     const handleChartClick = (param: MouseEventParams<Time>) => {
       const tool = activeToolRef.current;
       if (!tool) return;
-      if (param.point === undefined || param.time === undefined) return;
-      if (param.paneIndex !== 0) return;
+      if (param.point === undefined || param.paneIndex !== 0) return;
 
+      if (tool === "delete") {
+        const lines = hlinesRef.current;
+        const clickY = param.point.y;
+        let closestIndex = -1;
+        let closestDist = Infinity;
+        lines.forEach((line, i) => {
+          const y = candleSeries.priceToCoordinate(line.options().price);
+          if (y == null) return;
+          const dist = Math.abs(y - clickY);
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestIndex = i;
+          }
+        });
+        if (closestIndex !== -1 && closestDist <= DELETE_HIT_TOLERANCE_PX) {
+          const [line] = lines.splice(closestIndex, 1);
+          candleSeries.removePriceLine(line);
+        }
+        return;
+      }
+
+      if (param.time === undefined) return;
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (price == null) return;
 
@@ -258,17 +304,15 @@ export default function CandleChart({
     chart.subscribeClick(handleChartClick);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      const tool = activeToolRef.current;
-      if (tool === "measure" && measurePointsRef.current.length > 0) {
+      if (e.key !== "Escape" || !activeToolRef.current) return;
+      activeToolRef.current = null;
+      setActiveTool(null);
+      if (measurePointsRef.current.length > 0) {
         measurePointsRef.current = [];
         measurePrimitive.setPoints([]);
-        setMeasureStep(0);
         chart.applyOptions({});
-      } else if (tool === "hline" && hlinesRef.current.length > 0) {
-        const last = hlinesRef.current.pop();
-        if (last) candleSeries.removePriceLine(last);
       }
+      setMeasureStep(0);
     };
     window.addEventListener("keydown", handleKeyDown);
 
@@ -513,7 +557,7 @@ export default function CandleChart({
       ? "Clicca il punto di partenza"
       : measureStep === 1
         ? "Clicca il punto di arrivo"
-        : "Clicca per una nuova misura (Esc per pulire)";
+        : "Clicca per una nuova misura (Esc per uscire)";
 
   return (
     <div className={styles.wrapper}>
@@ -559,7 +603,7 @@ export default function CandleChart({
             type="button"
             className={[styles.toolButton, activeTool === "measure" ? styles.toolButtonActive : ""].join(" ")}
             onClick={() => handleSelectTool("measure")}
-            title="Misura la variazione % tra due punti del grafico"
+            title="Misura la variazione % tra due punti del grafico (Esc per uscire)"
             aria-pressed={activeTool === "measure"}
           >
             <MeasureIcon />
@@ -574,7 +618,7 @@ export default function CandleChart({
             type="button"
             className={[styles.toolButton, activeTool === "hline" ? styles.toolButtonActive : ""].join(" ")}
             onClick={() => handleSelectTool("hline")}
-            title="Disegna righe orizzontali di supporto/resistenza (Esc per annullare l'ultima)"
+            title="Disegna righe orizzontali di supporto/resistenza (Esc per uscire)"
             aria-pressed={activeTool === "hline"}
           >
             <HLineIcon />
@@ -596,6 +640,24 @@ export default function CandleChart({
                 />
               ))}
             </div>
+          )}
+        </div>
+
+        <div className={styles.toolRow}>
+          <button
+            type="button"
+            className={[
+              styles.toolButton,
+              activeTool === "delete" ? styles.toolButtonDanger : "",
+            ].join(" ")}
+            onClick={() => handleSelectTool("delete")}
+            title="Elimina una riga orizzontale (clicca sulla riga, Esc per uscire)"
+            aria-pressed={activeTool === "delete"}
+          >
+            <TrashIcon />
+          </button>
+          {activeTool === "delete" && (
+            <div className={styles.toolFlyout}>Clicca una riga per eliminarla</div>
           )}
         </div>
 
