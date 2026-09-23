@@ -8,6 +8,7 @@ import {
   LineStyle,
   createChart,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type MouseEventParams,
   type Time,
@@ -28,8 +29,11 @@ const EMA_LINES: { period: number; color: string; title: string }[] = [
 ];
 
 const REGRESSION_COLOR = "#5b8def";
+const HLINE_COLOR = "#ff9f43";
 const MACD_COLOR = "#58a6ff";
 const SIGNAL_COLOR = "#ffd700";
+
+type Tool = "measure" | "hline" | null;
 
 const REGRESSION_BAR_OPTIONS = [50, 100, 240, 500] as const;
 
@@ -50,6 +54,32 @@ function MeasureIcon() {
         stroke="currentColor"
         strokeWidth="1.5"
         strokeDasharray="2.5 2.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function HLineIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <line
+        x1="3"
+        y1="8"
+        x2="21"
+        y2="8"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        opacity="0.35"
+      />
+      <line
+        x1="3"
+        y1="16"
+        x2="21"
+        y2="16"
+        stroke="currentColor"
+        strokeWidth="3"
         strokeLinecap="round"
       />
     </svg>
@@ -98,11 +128,12 @@ export default function CandleChart({
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const measurePrimitiveRef = useRef<MeasurePrimitive | null>(null);
   const measurePointsRef = useRef<MeasurePoint[]>([]);
-  const measureModeRef = useRef(false);
+  const hlinesRef = useRef<IPriceLine[]>([]);
+  const activeToolRef = useRef<Tool>(null);
 
   const [showRegression, setShowRegression] = useState(false);
   const [regressionBars, setRegressionBars] = useState<number | undefined>(240);
-  const [measureMode, setMeasureMode] = useState(false);
+  const [activeTool, setActiveTool] = useState<Tool>(null);
   const [measureStep, setMeasureStep] = useState(0);
 
   // ── chart + candles + EMA + MACD (rebuilt only when the candle set changes) ──
@@ -182,38 +213,58 @@ export default function CandleChart({
       );
     }
 
-    // ── measure tool: attached once, driven by click coordinates below ──
+    // ── measure + horizontal-line tools: attached/subscribed once, driven ──
+    // by click coordinates below and gated by activeToolRef.
     const measurePrimitive = new MeasurePrimitive();
     candleSeries.attachPrimitive(measurePrimitive);
     measurePrimitiveRef.current = measurePrimitive;
+    hlinesRef.current = [];
 
-    const handleMeasureClick = (param: MouseEventParams<Time>) => {
-      if (!measureModeRef.current) return;
+    const handleChartClick = (param: MouseEventParams<Time>) => {
+      const tool = activeToolRef.current;
+      if (!tool) return;
       if (param.point === undefined || param.time === undefined) return;
       if (param.paneIndex !== 0) return;
 
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (price == null) return;
 
-      const time = param.time as UTCTimestamp;
-      const index = candles.findIndex((c) => c.time === time);
-      const nextPoint: MeasurePoint = { time, price, index: Math.max(index, 0) };
+      if (tool === "measure") {
+        const time = param.time as UTCTimestamp;
+        const index = candles.findIndex((c) => c.time === time);
+        const nextPoint: MeasurePoint = { time, price, index: Math.max(index, 0) };
 
-      const current = measurePointsRef.current;
-      const next = current.length >= 2 ? [nextPoint] : [...current, nextPoint];
-      measurePointsRef.current = next;
-      measurePrimitive.setPoints(next);
-      setMeasureStep(next.length);
-      chart.applyOptions({});
+        const current = measurePointsRef.current;
+        const next = current.length >= 2 ? [nextPoint] : [...current, nextPoint];
+        measurePointsRef.current = next;
+        measurePrimitive.setPoints(next);
+        setMeasureStep(next.length);
+        chart.applyOptions({});
+      } else if (tool === "hline") {
+        const line = candleSeries.createPriceLine({
+          price,
+          color: HLINE_COLOR,
+          lineWidth: 3,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: "",
+        });
+        hlinesRef.current.push(line);
+      }
     };
-    chart.subscribeClick(handleMeasureClick);
+    chart.subscribeClick(handleChartClick);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && measurePointsRef.current.length > 0) {
+      if (e.key !== "Escape") return;
+      const tool = activeToolRef.current;
+      if (tool === "measure" && measurePointsRef.current.length > 0) {
         measurePointsRef.current = [];
         measurePrimitive.setPoints([]);
         setMeasureStep(0);
         chart.applyOptions({});
+      } else if (tool === "hline" && hlinesRef.current.length > 0) {
+        const last = hlinesRef.current.pop();
+        if (last) candleSeries.removePriceLine(last);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -317,12 +368,13 @@ export default function CandleChart({
     return () => {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleKeyDown);
-      chart.unsubscribeClick(handleMeasureClick);
+      chart.unsubscribeClick(handleChartClick);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
       measurePrimitiveRef.current = null;
       measurePointsRef.current = [];
+      hlinesRef.current = [];
       setMeasureStep(0);
     };
   }, [candles]);
@@ -386,15 +438,15 @@ export default function CandleChart({
   }, [candles, showRegression, regressionBars]);
 
   // Kept in sync so the click handler (subscribed once, above) always sees
-  // the latest toggle state without needing to resubscribe.
+  // the latest tool selection without needing to resubscribe.
   useEffect(() => {
-    measureModeRef.current = measureMode;
-  }, [measureMode]);
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
 
-  const handleToggleMeasure = () => {
-    const next = !measureMode;
-    setMeasureMode(next);
-    if (!next) {
+  const handleSelectTool = (tool: Exclude<Tool, null>) => {
+    const next = activeTool === tool ? null : tool;
+    setActiveTool(next);
+    if (activeTool === "measure" && next !== "measure") {
       measurePointsRef.current = [];
       measurePrimitiveRef.current?.setPoints([]);
       setMeasureStep(0);
@@ -498,14 +550,33 @@ export default function CandleChart({
         <div className={styles.toolRow}>
           <button
             type="button"
-            className={[styles.toolButton, measureMode ? styles.toolButtonActive : ""].join(" ")}
-            onClick={handleToggleMeasure}
+            className={[styles.toolButton, activeTool === "measure" ? styles.toolButtonActive : ""].join(" ")}
+            onClick={() => handleSelectTool("measure")}
             title="Misura la variazione % tra due punti del grafico"
-            aria-pressed={measureMode}
+            aria-pressed={activeTool === "measure"}
           >
             <MeasureIcon />
           </button>
-          {measureMode && <div className={styles.toolFlyout}>{measureHint}</div>}
+          {activeTool === "measure" && (
+            <div className={styles.toolFlyout}>{measureHint}</div>
+          )}
+        </div>
+
+        <div className={styles.toolRow}>
+          <button
+            type="button"
+            className={[styles.toolButton, activeTool === "hline" ? styles.toolButtonActive : ""].join(" ")}
+            onClick={() => handleSelectTool("hline")}
+            title="Disegna righe orizzontali di supporto/resistenza (Esc per annullare l'ultima)"
+            aria-pressed={activeTool === "hline"}
+          >
+            <HLineIcon />
+          </button>
+          {activeTool === "hline" && (
+            <div className={styles.toolFlyout}>
+              Clicca per aggiungere una riga · Esc per annullare l&apos;ultima
+            </div>
+          )}
         </div>
 
         <div className={styles.toolDivider} />
@@ -548,7 +619,7 @@ export default function CandleChart({
         style={{
           width: "100%",
           height: TOTAL_HEIGHT,
-          cursor: measureMode ? "crosshair" : "default",
+          cursor: activeTool ? "crosshair" : "default",
         }}
       />
     </div>
