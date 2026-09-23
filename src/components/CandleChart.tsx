@@ -8,12 +8,16 @@ import {
   LineStyle,
   createChart,
   type IChartApi,
+  type ISeriesApi,
+  type MouseEventParams,
+  type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Candle } from "@/lib/candles";
 import { ema, linearRegressionChannel, macd } from "@/lib/indicators";
 import { RegressionChannelPrimitive } from "./regressionChannelPrimitive";
+import { MeasurePrimitive, type MeasurePoint } from "./measurePrimitive";
 import { drawLegendBox, type LegendItem } from "./chartLegendCanvas";
 import styles from "./CandleChart.module.css";
 
@@ -27,26 +31,81 @@ const REGRESSION_COLOR = "#5b8def";
 const MACD_COLOR = "#58a6ff";
 const SIGNAL_COLOR = "#ffd700";
 
+const REGRESSION_BAR_OPTIONS = [50, 100, 240, 500] as const;
+
 const PRICE_PANE_HEIGHT = 430;
 const MACD_PANE_HEIGHT = 150;
 const TOTAL_HEIGHT = PRICE_PANE_HEIGHT + MACD_PANE_HEIGHT;
 
+function MeasureIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="6" cy="18" r="2.5" fill="currentColor" />
+      <circle cx="18" cy="6" r="2.5" fill="currentColor" />
+      <line
+        x1="8.2"
+        y1="15.8"
+        x2="15.8"
+        y2="8.2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeDasharray="2.5 2.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ChannelIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <line
+        x1="3"
+        y1="14"
+        x2="21"
+        y2="2"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeDasharray="2 2"
+        opacity="0.6"
+      />
+      <line x1="3" y1="19" x2="21" y2="7" stroke="currentColor" strokeWidth="1.5" />
+      <line
+        x1="3"
+        y1="24"
+        x2="21"
+        y2="12"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeDasharray="2 2"
+        opacity="0.6"
+      />
+    </svg>
+  );
+}
+
 export default function CandleChart({
   candles,
-  showRegression = false,
-  regressionBars,
   symbol,
   timeframe,
 }: {
   candles: Candle[];
-  showRegression?: boolean;
-  regressionBars?: number;
   symbol?: string;
   timeframe?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const measurePrimitiveRef = useRef<MeasurePrimitive | null>(null);
+  const measurePointsRef = useRef<MeasurePoint[]>([]);
+  const measureModeRef = useRef(false);
 
+  const [showRegression, setShowRegression] = useState(false);
+  const [regressionBars, setRegressionBars] = useState<number | undefined>(240);
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measureStep, setMeasureStep] = useState(0);
+
+  // ── chart + candles + EMA + MACD (rebuilt only when the candle set changes) ──
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -73,6 +132,7 @@ export default function CandleChart({
       wickUpColor: "#26a69a",
       wickDownColor: "#ef5350",
     });
+    candleSeriesRef.current = candleSeries;
 
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
@@ -122,45 +182,41 @@ export default function CandleChart({
       );
     }
 
-    if (showRegression) {
-      const { mid, upper, lower } = linearRegressionChannel(
-        closes,
-        regressionBars
-      );
+    // ── measure tool: attached once, driven by click coordinates below ──
+    const measurePrimitive = new MeasurePrimitive();
+    candleSeries.attachPrimitive(measurePrimitive);
+    measurePrimitiveRef.current = measurePrimitive;
 
-      const channelPoints = candles
-        .map((c, i) => ({
-          time: c.time as UTCTimestamp,
-          mid: mid[i],
-          upper: upper[i],
-          lower: lower[i],
-        }))
-        .filter(
-          (p): p is { time: UTCTimestamp; mid: number; upper: number; lower: number } =>
-            p.mid != null && p.upper != null && p.lower != null
-        );
+    const handleMeasureClick = (param: MouseEventParams<Time>) => {
+      if (!measureModeRef.current) return;
+      if (param.point === undefined || param.time === undefined) return;
+      if (param.paneIndex !== 0) return;
 
-      candleSeries.attachPrimitive(new RegressionChannelPrimitive(channelPoints));
+      const price = candleSeries.coordinateToPrice(param.point.y);
+      if (price == null) return;
 
-      const midSeries = chart.addSeries(LineSeries, {
-        color: REGRESSION_COLOR,
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-      midSeries.setData(channelPoints.map((p) => ({ time: p.time, value: p.mid })));
+      const time = param.time as UTCTimestamp;
+      const index = candles.findIndex((c) => c.time === time);
+      const nextPoint: MeasurePoint = { time, price, index: Math.max(index, 0) };
 
-      for (const key of ["upper", "lower"] as const) {
-        const series = chart.addSeries(LineSeries, {
-          color: "rgba(91,141,239,0.5)",
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        series.setData(channelPoints.map((p) => ({ time: p.time, value: p[key] })));
+      const current = measurePointsRef.current;
+      const next = current.length >= 2 ? [nextPoint] : [...current, nextPoint];
+      measurePointsRef.current = next;
+      measurePrimitive.setPoints(next);
+      setMeasureStep(next.length);
+      chart.applyOptions({});
+    };
+    chart.subscribeClick(handleMeasureClick);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && measurePointsRef.current.length > 0) {
+        measurePointsRef.current = [];
+        measurePrimitive.setPoints([]);
+        setMeasureStep(0);
+        chart.applyOptions({});
       }
-    }
+    };
+    window.addEventListener("keydown", handleKeyDown);
 
     // ── MACD pane ──────────────────────────────────────────────────────
     const { macdLine, signalLine, histogram } = macd(closes);
@@ -260,10 +316,91 @@ export default function CandleChart({
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("keydown", handleKeyDown);
+      chart.unsubscribeClick(handleMeasureClick);
       chart.remove();
       chartRef.current = null;
+      candleSeriesRef.current = null;
+      measurePrimitiveRef.current = null;
+      measurePointsRef.current = [];
+      setMeasureStep(0);
+    };
+  }, [candles]);
+
+  // ── linear regression channel: added/removed independently so toggling ──
+  // it doesn't rebuild the whole chart (and reset pan/zoom).
+  useEffect(() => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+    if (!chart || !candleSeries || !showRegression) return;
+
+    const closes = candles.map((c) => c.close);
+    const { mid, upper, lower } = linearRegressionChannel(closes, regressionBars);
+
+    const channelPoints = candles
+      .map((c, i) => ({
+        time: c.time as UTCTimestamp,
+        mid: mid[i],
+        upper: upper[i],
+        lower: lower[i],
+      }))
+      .filter(
+        (p): p is { time: UTCTimestamp; mid: number; upper: number; lower: number } =>
+          p.mid != null && p.upper != null && p.lower != null
+      );
+
+    const primitive = new RegressionChannelPrimitive(channelPoints);
+    candleSeries.attachPrimitive(primitive);
+
+    const midSeries = chart.addSeries(LineSeries, {
+      color: REGRESSION_COLOR,
+      lineWidth: 1,
+      lineStyle: LineStyle.Dashed,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    midSeries.setData(channelPoints.map((p) => ({ time: p.time, value: p.mid })));
+
+    const bandSeries = (["upper", "lower"] as const).map((key) => {
+      const series = chart.addSeries(LineSeries, {
+        color: "rgba(91,141,239,0.5)",
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      series.setData(channelPoints.map((p) => ({ time: p.time, value: p[key] })));
+      return series;
+    });
+
+    return () => {
+      // The mount effect's own cleanup may have already torn the chart down
+      // (e.g. symbol/timeframe change), disposing these series first.
+      try {
+        candleSeries.detachPrimitive(primitive);
+        chart.removeSeries(midSeries);
+        for (const series of bandSeries) chart.removeSeries(series);
+      } catch {
+        // already disposed
+      }
     };
   }, [candles, showRegression, regressionBars]);
+
+  // Kept in sync so the click handler (subscribed once, above) always sees
+  // the latest toggle state without needing to resubscribe.
+  useEffect(() => {
+    measureModeRef.current = measureMode;
+  }, [measureMode]);
+
+  const handleToggleMeasure = () => {
+    const next = !measureMode;
+    setMeasureMode(next);
+    if (!next) {
+      measurePointsRef.current = [];
+      measurePrimitiveRef.current?.setPoints([]);
+      setMeasureStep(0);
+      chartRef.current?.applyOptions({});
+    }
+  };
 
   const handleExport = () => {
     const chart = chartRef.current;
@@ -312,11 +449,19 @@ export default function CandleChart({
     link.click();
   };
 
+  const measureHint =
+    measureStep === 0
+      ? "Clicca il punto di partenza"
+      : measureStep === 1
+        ? "Clicca il punto di arrivo"
+        : "Clicca per una nuova misura (Esc per pulire)";
+
   return (
     <div className={styles.wrapper}>
       <button type="button" className={styles.exportButton} onClick={handleExport}>
         Esporta JPEG
       </button>
+
       <div className={styles.legend}>
         {EMA_LINES.map(({ title, color }) => (
           <span key={title} className={styles.legendItem}>
@@ -334,6 +479,7 @@ export default function CandleChart({
           </span>
         )}
       </div>
+
       <div
         className={styles.legendMacd}
         style={{ top: PRICE_PANE_HEIGHT + 8 }}
@@ -347,7 +493,64 @@ export default function CandleChart({
           Signal
         </span>
       </div>
-      <div ref={containerRef} style={{ width: "100%", height: TOTAL_HEIGHT }} />
+
+      <div className={styles.toolbar}>
+        <div className={styles.toolRow}>
+          <button
+            type="button"
+            className={[styles.toolButton, measureMode ? styles.toolButtonActive : ""].join(" ")}
+            onClick={handleToggleMeasure}
+            title="Misura la variazione % tra due punti del grafico"
+            aria-pressed={measureMode}
+          >
+            <MeasureIcon />
+          </button>
+          {measureMode && <div className={styles.toolFlyout}>{measureHint}</div>}
+        </div>
+
+        <div className={styles.toolDivider} />
+
+        <div className={styles.toolRow}>
+          <button
+            type="button"
+            className={[styles.toolButton, showRegression ? styles.toolButtonActive : ""].join(" ")}
+            onClick={() => setShowRegression((v) => !v)}
+            title="Canale di regressione lineare"
+            aria-pressed={showRegression}
+          >
+            <ChannelIcon />
+          </button>
+          {showRegression && (
+            <div className={styles.toolFlyout}>
+              <select
+                className={styles.toolSelect}
+                value={regressionBars ?? "all"}
+                onChange={(e) =>
+                  setRegressionBars(
+                    e.target.value === "all" ? undefined : Number(e.target.value)
+                  )
+                }
+              >
+                {REGRESSION_BAR_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n} candele
+                  </option>
+                ))}
+                <option value="all">Tutte</option>
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div
+        ref={containerRef}
+        style={{
+          width: "100%",
+          height: TOTAL_HEIGHT,
+          cursor: measureMode ? "crosshair" : "default",
+        }}
+      />
     </div>
   );
 }

@@ -10,7 +10,7 @@ export interface LegendItem {
   color: string;
 }
 
-function roundedRectPath(
+export function roundedRectPath(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,

@@ -14,8 +14,6 @@ export default function ChartsPage() {
   const [symbols, setSymbols] = useState<SymbolSummary[]>([]);
   const [symbol, setSymbol] = useState<string>("");
   const [timeframe, setTimeframe] = useState<Timeframe>("15m");
-  const [showRegression, setShowRegression] = useState(false);
-  const [regressionBars, setRegressionBars] = useState(240);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [candlesFor, setCandlesFor] = useState<string | null>(null);
   const [symbolInfo, setSymbolInfo] = useState<SymbolInfo | null>(null);
@@ -112,46 +110,13 @@ export default function ChartsPage() {
                 ` (${selectedInfo.changePercent >= 0 ? "+" : ""}${selectedInfo.changePercent.toFixed(2)}%)`}
             </span>
           )}
-          <label className={styles.regressionToggle}>
-            <input
-              type="checkbox"
-              checked={showRegression}
-              onChange={(e) => setShowRegression(e.target.checked)}
-            />
-            Regressione lineare
-          </label>
-          {showRegression && (
-            <select
-              className={styles.regressionBars}
-              value={regressionBars === Infinity ? "all" : regressionBars}
-              onChange={(e) =>
-                setRegressionBars(
-                  e.target.value === "all" ? Infinity : Number(e.target.value)
-                )
-              }
-            >
-              <option value={50}>50 candele</option>
-              <option value={100}>100 candele</option>
-              <option value={240}>240 candele</option>
-              <option value={500}>500 candele</option>
-              <option value="all">Tutte</option>
-            </select>
-          )}
           <TimeframeSelector value={timeframe} onChange={setTimeframe} />
         </div>
 
         {error && <p className={styles.error}>Errore: {error}</p>}
         {loading && <p className={styles.status}>Caricamento {symbol}...</p>}
         {!loading && !error && candles.length > 0 && (
-          <CandleChart
-            candles={candles}
-            showRegression={showRegression}
-            regressionBars={
-              regressionBars === Infinity ? undefined : regressionBars
-            }
-            symbol={symbol}
-            timeframe={timeframe}
-          />
+          <CandleChart candles={candles} symbol={symbol} timeframe={timeframe} />
         )}
 
         {symbol && <SymbolInfoPanel symbol={symbol} info={symbolInfo} />}
