@@ -29,9 +29,10 @@ const EMA_LINES: { period: number; color: string; title: string }[] = [
 ];
 
 const REGRESSION_COLOR = "#5b8def";
-const HLINE_COLOR = "#ff9f43";
 const MACD_COLOR = "#58a6ff";
 const SIGNAL_COLOR = "#ffd700";
+
+const HLINE_PALETTE = ["#ff9f43", "#5b8def", "#ef5350", "#26a69a", "#a78bfa", "#d1d4dc"];
 
 type Tool = "measure" | "hline" | null;
 
@@ -130,11 +131,13 @@ export default function CandleChart({
   const measurePointsRef = useRef<MeasurePoint[]>([]);
   const hlinesRef = useRef<IPriceLine[]>([]);
   const activeToolRef = useRef<Tool>(null);
+  const hlineColorRef = useRef(HLINE_PALETTE[0]);
 
   const [showRegression, setShowRegression] = useState(false);
   const [regressionBars, setRegressionBars] = useState<number | undefined>(240);
   const [activeTool, setActiveTool] = useState<Tool>(null);
   const [measureStep, setMeasureStep] = useState(0);
+  const [hlineColor, setHlineColor] = useState(HLINE_PALETTE[0]);
 
   // ── chart + candles + EMA + MACD (rebuilt only when the candle set changes) ──
   useEffect(() => {
@@ -243,7 +246,7 @@ export default function CandleChart({
       } else if (tool === "hline") {
         const line = candleSeries.createPriceLine({
           price,
-          color: HLINE_COLOR,
+          color: hlineColorRef.current,
           lineWidth: 3,
           lineStyle: LineStyle.Solid,
           axisLabelVisible: true,
@@ -443,6 +446,10 @@ export default function CandleChart({
     activeToolRef.current = activeTool;
   }, [activeTool]);
 
+  useEffect(() => {
+    hlineColorRef.current = hlineColor;
+  }, [hlineColor]);
+
   const handleSelectTool = (tool: Exclude<Tool, null>) => {
     const next = activeTool === tool ? null : tool;
     setActiveTool(next);
@@ -573,8 +580,21 @@ export default function CandleChart({
             <HLineIcon />
           </button>
           {activeTool === "hline" && (
-            <div className={styles.toolFlyout}>
-              Clicca per aggiungere una riga · Esc per annullare l&apos;ultima
+            <div className={[styles.toolFlyout, styles.toolFlyoutInteractive].join(" ")}>
+              {HLINE_PALETTE.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={[
+                    styles.colorDot,
+                    hlineColor === color ? styles.colorDotActive : "",
+                  ].join(" ")}
+                  style={{ background: color }}
+                  onClick={() => setHlineColor(color)}
+                  title="Righe in questo colore"
+                  aria-pressed={hlineColor === color}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -592,7 +612,7 @@ export default function CandleChart({
             <ChannelIcon />
           </button>
           {showRegression && (
-            <div className={styles.toolFlyout}>
+            <div className={[styles.toolFlyout, styles.toolFlyoutInteractive].join(" ")}>
               <select
                 className={styles.toolSelect}
                 value={regressionBars ?? "all"}
