@@ -22,6 +22,7 @@ const NAV_ITEMS: NavItem[] = [
       { href: "/analysis/volatility", label: "Volatilità" },
       { href: "/analysis/rsi", label: "RSI" },
       { href: "/analysis/macd", label: "MACD" },
+      { href: "/analysis/trend", label: "Trend" },
     ],
   },
 ];
