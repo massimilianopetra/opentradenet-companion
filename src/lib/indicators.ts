@@ -25,6 +25,8 @@ export interface RegressionChannel {
   mid: (number | null)[];
   upper: (number | null)[];
   lower: (number | null)[];
+  /** Slope of the fit line as % of the window's mean close, per bar (null if < 2 bars). */
+  slopePercent: number | null;
 }
 
 /** Least-squares linear regression over the last `bars` closes (default: all of them). */
@@ -41,7 +43,7 @@ export function linearRegressionChannel(
   const window = bars ?? n;
   const start = Math.max(0, n - window);
   const count = n - start;
-  if (count < 2) return { mid, upper, lower };
+  if (count < 2) return { mid, upper, lower, slopePercent: null };
 
   let sumX = 0;
   let sumY = 0;
@@ -71,7 +73,10 @@ export function linearRegressionChannel(
     lower[i] = fit - k * std;
   }
 
-  return { mid, upper, lower };
+  const meanClose = sumY / count;
+  const slopePercent = meanClose !== 0 ? (slope / meanClose) * 100 : null;
+
+  return { mid, upper, lower, slopePercent };
 }
 
 export interface Macd {

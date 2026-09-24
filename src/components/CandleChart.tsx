@@ -14,7 +14,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Candle } from "@/lib/candles";
 import { ema, linearRegressionChannel, macd } from "@/lib/indicators";
 import { RegressionChannelPrimitive } from "./regressionChannelPrimitive";
@@ -203,6 +203,20 @@ export default function CandleChart({
   const [hlineColor, setHlineColor] = useState(HLINE_PALETTE[0]);
   const [lineMode, setLineMode] = useState<LineMode>("horizontal");
   const [segmentPending, setSegmentPending] = useState(false);
+
+  // Regression slope as "% per candle", shown next to the LR legend label.
+  const regressionLabel = useMemo(() => {
+    const base = `LR (${regressionBars ?? candles.length})`;
+    if (!showRegression) return base;
+    const { slopePercent } = linearRegressionChannel(
+      candles.map((c) => c.close),
+      regressionBars
+    );
+    if (slopePercent == null) return base;
+    const sign = slopePercent > 0 ? "+" : "";
+    const digits = Math.abs(slopePercent) < 0.01 ? 4 : 3;
+    return `${base} · ${sign}${slopePercent.toFixed(digits)}% / ${timeframe ?? "candela"}`;
+  }, [candles, showRegression, regressionBars, timeframe]);
 
   // ── chart + candles + EMA + MACD (rebuilt only when the candle set changes) ──
   useEffect(() => {
@@ -735,7 +749,7 @@ export default function CandleChart({
     }));
     if (showRegression) {
       emaItems.push({
-        label: `LR (${regressionBars ?? candles.length})`,
+        label: regressionLabel,
         color: REGRESSION_COLOR,
       });
     }
@@ -787,7 +801,7 @@ export default function CandleChart({
               className={styles.swatch}
               style={{ background: REGRESSION_COLOR }}
             />
-            LR ({regressionBars ?? candles.length})
+            {regressionLabel}
           </span>
         )}
       </div>
