@@ -5,11 +5,13 @@ import ChartLink from "@/components/ChartLink";
 import {
   RSI_OVERBOUGHT,
   RSI_OVERSOLD,
-  RSI_TIMEFRAMES,
   type RsiRow,
-  type RsiTimeframe,
   type RsiZone,
 } from "@/lib/rsiAnalysis";
+import {
+  ANALYSIS_TIMEFRAMES,
+  type AnalysisTimeframe,
+} from "@/lib/analysisTimeframes";
 import styles from "../analysis.module.css";
 
 const PERIODS = [7, 14, 21];
@@ -39,7 +41,7 @@ const COLUMNS: { key: SortKey | "zone"; label: string; title: string }[] = [
 ];
 
 export default function RsiPage() {
-  const [tf, setTf] = useState<RsiTimeframe>("1h");
+  const [tf, setTf] = useState<AnalysisTimeframe>("1h");
   const [period, setPeriod] = useState(14);
   const [rows, setRows] = useState<RsiRow[]>([]);
   const [rowsFor, setRowsFor] = useState<string | null>(null);
@@ -145,7 +147,7 @@ export default function RsiPage() {
             ))}
           </div>
           <div className={styles.group} title="Timeframe">
-            {RSI_TIMEFRAMES.map((t) => (
+            {ANALYSIS_TIMEFRAMES.map((t) => (
               <button
                 key={t}
                 type="button"

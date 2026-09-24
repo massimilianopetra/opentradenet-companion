@@ -1,9 +1,6 @@
 import type { Candle } from "./candles";
 import { rsi } from "./indicators";
 
-export const RSI_TIMEFRAMES = ["15m", "1h", "1d"] as const;
-export type RsiTimeframe = (typeof RSI_TIMEFRAMES)[number];
-
 export const RSI_OVERBOUGHT = 70;
 export const RSI_OVERSOLD = 30;
 

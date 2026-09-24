@@ -60,7 +60,7 @@
   flex-direction: column;
 }
 
-.groupActive {
+.groupToggle.groupActive {
   color: #d1d4dc !important;
   font-weight: 600;
 }
@@ -78,4 +78,34 @@
 .subnav a {
   padding: 7px 12px;
   font-size: 13px;
+}
+
+.groupToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9198a1;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupToggle:hover {
+  background: #1e222d;
+  color: #d1d4dc;
+}
+
+.chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
 }

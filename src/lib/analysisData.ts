@@ -3,6 +3,7 @@ import path from "node:path";
 import { aggregateCandles, type Candle } from "./candles";
 import { readCandles } from "./candlesServer";
 import { getDataDir } from "./dataDir";
+import type { AnalysisTimeframe } from "./analysisTimeframes";
 import { completeDailyCandles } from "./volatility";
 
 /** How many trailing 15m candles to keep — plenty for Wilder RSI to converge. */
@@ -26,6 +27,16 @@ export interface SymbolSeries {
  * rewrites it. Shared by all the /api/analysis/* routes.
  */
 const cache = new Map<string, SymbolSeries>();
+
+/** Candles for a per-candle analysis timeframe; the last one may be forming. */
+export function seriesCandles(
+  series: SymbolSeries,
+  tf: AnalysisTimeframe
+): Candle[] {
+  if (tf === "15m") return series.recent15m;
+  if (tf === "1h") return series.hourly;
+  return series.daily;
+}
 
 export async function listCandleSymbols(): Promise<string[]> {
   const entries = await readdir(path.join(getDataDir(), "candles"), {

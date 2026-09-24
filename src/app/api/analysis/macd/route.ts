@@ -10,22 +10,13 @@ import {
 } from "@/lib/analysisTimeframes";
 import { readSymbolsInfo } from "@/lib/symbolInfoServer";
 import { splitDescription } from "@/lib/symbolInfo";
-import { computeRsiStats, type RsiRow } from "@/lib/rsiAnalysis";
+import { computeMacdStats, type MacdRow } from "@/lib/macdAnalysis";
 
 export async function GET(request: Request) {
-  const params = new URL(request.url).searchParams;
-  const tf = params.get("tf") ?? "1h";
-  const period = Number(params.get("period") ?? "14");
-
+  const tf = new URL(request.url).searchParams.get("tf") ?? "1h";
   if (!isAnalysisTimeframe(tf)) {
     return NextResponse.json(
       { error: `tf must be one of ${ANALYSIS_TIMEFRAMES.join(", ")}` },
-      { status: 400 }
-    );
-  }
-  if (!Number.isInteger(period) || period < 2 || period > 100) {
-    return NextResponse.json(
-      { error: "period must be an integer between 2 and 100" },
       { status: 400 }
     );
   }
@@ -44,11 +35,11 @@ export async function GET(request: Request) {
   const info = await readSymbolsInfo();
 
   const rows = await Promise.all(
-    symbols.map(async (symbol): Promise<RsiRow | null> => {
+    symbols.map(async (symbol): Promise<MacdRow | null> => {
       try {
         const series = await readSymbolSeries(symbol);
         if (!series) return null;
-        const stats = computeRsiStats(seriesCandles(series, tf), period);
+        const stats = computeMacdStats(seriesCandles(series, tf));
         if (!stats) return null;
         return {
           symbol,
@@ -63,9 +54,8 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     tf,
-    period,
     rows: rows
-      .filter((r): r is RsiRow => r !== null)
-      .sort((a, b) => b.rsi - a.rsi),
+      .filter((r): r is MacdRow => r !== null)
+      .sort((a, b) => b.histPercent - a.histPercent),
   });
 }

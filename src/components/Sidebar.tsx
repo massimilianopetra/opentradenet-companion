@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import styles from "./Sidebar.module.css";
 
@@ -20,12 +21,15 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { href: "/analysis/volatility", label: "Volatilità" },
       { href: "/analysis/rsi", label: "RSI" },
+      { href: "/analysis/macd", label: "MACD" },
     ],
   },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  // Explicit open/closed per group; unset means "open while inside it".
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   return (
     <nav className={styles.sidebar}>
@@ -43,28 +47,54 @@ export default function Sidebar() {
           }
           if (item.children) {
             const groupActive = pathname.startsWith(item.href);
+            const expanded = openGroups[item.href] ?? groupActive;
             return (
               <li key={item.href} className={styles.group}>
-                <Link
-                  href={item.children[0].href}
-                  className={groupActive ? styles.groupActive : undefined}
+                <button
+                  type="button"
+                  className={`${styles.groupToggle} ${groupActive ? styles.groupActive : ""}`}
+                  aria-expanded={expanded}
+                  onClick={() =>
+                    setOpenGroups((prev) => ({
+                      ...prev,
+                      [item.href]: !expanded,
+                    }))
+                  }
                 >
                   {item.label}
-                </Link>
-                <ul className={styles.subnav}>
-                  {item.children.map((child) => (
-                    <li key={child.href}>
-                      <Link
-                        href={child.href}
-                        className={
-                          pathname === child.href ? styles.active : undefined
-                        }
-                      >
-                        {child.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+                  <svg
+                    className={`${styles.chevron} ${expanded ? styles.chevronOpen : ""}`}
+                    viewBox="0 0 16 16"
+                    width="12"
+                    height="12"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6 4l4 4-4 4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+                {expanded && (
+                  <ul className={styles.subnav}>
+                    {item.children.map((child) => (
+                      <li key={child.href}>
+                        <Link
+                          href={child.href}
+                          className={
+                            pathname === child.href ? styles.active : undefined
+                          }
+                        >
+                          {child.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             );
           }
