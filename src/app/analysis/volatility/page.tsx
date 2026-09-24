@@ -48,6 +48,24 @@ const NUMERIC_COLUMNS = COLUMNS.map((c) => c.key).filter(
   (k): k is NumericKey => k !== "symbol"
 );
 
+type DateRange = { from: number; to: number };
+type VolatilityResponse =
+  | { rows: VolatilityRow[]; range: DateRange | null }
+  | { error: string };
+
+const DATE_FMT = new Intl.DateTimeFormat("it-IT", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const SHORT_DATE_FMT = new Intl.DateTimeFormat("it-IT", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "UTC",
+});
+const formatDay = (time: number, fmt = DATE_FMT) => fmt.format(time * 1000);
+
 const pct = (v: number, signed = false) =>
   `${signed && v > 0 ? "+" : ""}${v.toFixed(2)}%`;
 
@@ -67,6 +85,7 @@ function formatValue(key: NumericKey, value: number): string {
 export default function AnalysisPage() {
   const [days, setDays] = useState(20);
   const [rows, setRows] = useState<VolatilityRow[]>([]);
+  const [range, setRange] = useState<DateRange | null>(null);
   const [rowsFor, setRowsFor] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -78,7 +97,7 @@ export default function AnalysisPage() {
     let ignore = false;
     fetch(`/api/analysis/volatility?days=${days}`)
       .then((res) => res.json())
-      .then((data: { rows: VolatilityRow[] } | { error: string }) => {
+      .then((data: VolatilityResponse) => {
         if (ignore) return;
         if ("error" in data) {
           setError(data.error);
@@ -86,6 +105,7 @@ export default function AnalysisPage() {
         } else {
           setError(null);
           setRows(data.rows);
+          setRange(data.range);
         }
         setRowsFor(days);
       })
@@ -140,7 +160,12 @@ export default function AnalysisPage() {
       <div className={styles.header}>
         <h1>
           Analisi{" "}
-          <span className={styles.headerSub}>— Volatilità</span>
+          <span className={styles.headerSub}>
+            — Volatilità
+            {range &&
+              !loading &&
+              ` · ${formatDay(range.from)} – ${formatDay(range.to)}`}
+          </span>
         </h1>
         <div className={styles.controls}>
           <input
@@ -187,6 +212,9 @@ export default function AnalysisPage() {
                     onClick={() => handleSort(col.key)}
                   >
                     {col.label}
+                    {col.key === "lastBody" &&
+                      range &&
+                      ` (${formatDay(range.to, SHORT_DATE_FMT)})`}
                     {col.key === sortKey && (sortDesc ? " ▾" : " ▴")}
                   </th>
                 ))}

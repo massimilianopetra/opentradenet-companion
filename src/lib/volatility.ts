@@ -16,6 +16,9 @@ export interface VolatilityRow {
   /** Signed (close − open) / open of the most recent complete day, in %. */
   lastBody: number;
   lastPrice: number;
+  /** Start (unix seconds, UTC midnight) of the first and last day used. */
+  fromTime: number;
+  toTime: number;
 }
 
 export type VolatilityStats = Omit<VolatilityRow, "symbol" | "name">;
@@ -67,5 +70,7 @@ export function computeVolatility(
     upDaysPercent: (upDays / window.length) * 100,
     lastBody: ((last.close - last.open) / last.open) * 100,
     lastPrice,
+    fromTime: window[0].time,
+    toTime: last.time,
   };
 }

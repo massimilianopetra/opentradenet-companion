@@ -52,10 +52,20 @@ export async function GET(request: Request) {
     })
   );
 
+  const valid = rows
+    .filter((r): r is VolatilityRow => r !== null)
+    .sort((a, b) => b.bodyAvg - a.bodyAvg);
+
+  // Headline range: the most recent last day, and the earliest start among
+  // the symbols that end on it (shorter histories start later).
+  const to = Math.max(...valid.map((r) => r.toTime));
+  const from = Math.min(
+    ...valid.filter((r) => r.toTime === to).map((r) => r.fromTime)
+  );
+
   return NextResponse.json({
     days: daysParam,
-    rows: rows
-      .filter((r): r is VolatilityRow => r !== null)
-      .sort((a, b) => b.bodyAvg - a.bodyAvg),
+    range: valid.length > 0 ? { from, to } : null,
+    rows: valid,
   });
 }
