@@ -13,7 +13,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/charts", label: "Grafici" },
   { href: "/signals", label: "Segnali", disabled: true },
-  { href: "/analysis", label: "Analisi", disabled: true },
+  { href: "/analysis", label: "Analisi" },
 ];
 
 export default function Sidebar() {
