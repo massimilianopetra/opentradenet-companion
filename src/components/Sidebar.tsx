@@ -8,12 +8,20 @@ interface NavItem {
   href: string;
   label: string;
   disabled?: boolean;
+  children?: NavItem[];
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/charts", label: "Grafici" },
   { href: "/signals", label: "Segnali", disabled: true },
-  { href: "/analysis", label: "Analisi" },
+  {
+    href: "/analysis",
+    label: "Analisi",
+    children: [
+      { href: "/analysis/volatility", label: "Volatilità" },
+      { href: "/analysis/rsi", label: "RSI" },
+    ],
+  },
 ];
 
 export default function Sidebar() {
@@ -26,7 +34,6 @@ export default function Sidebar() {
       </Link>
       <ul className={styles.nav}>
         {NAV_ITEMS.map((item) => {
-          const active = pathname === item.href;
           if (item.disabled) {
             return (
               <li key={item.href} className={styles.disabled} title="In arrivo">
@@ -34,11 +41,38 @@ export default function Sidebar() {
               </li>
             );
           }
+          if (item.children) {
+            const groupActive = pathname.startsWith(item.href);
+            return (
+              <li key={item.href} className={styles.group}>
+                <Link
+                  href={item.children[0].href}
+                  className={groupActive ? styles.groupActive : undefined}
+                >
+                  {item.label}
+                </Link>
+                <ul className={styles.subnav}>
+                  {item.children.map((child) => (
+                    <li key={child.href}>
+                      <Link
+                        href={child.href}
+                        className={
+                          pathname === child.href ? styles.active : undefined
+                        }
+                      >
+                        {child.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            );
+          }
           return (
             <li key={item.href}>
               <Link
                 href={item.href}
-                className={active ? styles.active : undefined}
+                className={pathname === item.href ? styles.active : undefined}
               >
                 {item.label}
               </Link>

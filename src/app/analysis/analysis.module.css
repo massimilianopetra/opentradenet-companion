@@ -212,21 +212,6 @@
   margin-left: 0;
 }
 
-.chartLink {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  color: #6a6f7a;
-  flex-shrink: 0;
-}
-
-.chartLink:hover {
-  background: #2a2e39;
-  color: #ffd700;
-}
 
 .barUp {
   background: #26a69a;
@@ -234,4 +219,85 @@
 
 .barDown {
   background: #ef5350;
+}
+
+.subheader {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.count {
+  margin-left: 4px;
+  color: #6a6f7a;
+  font-weight: 400;
+}
+
+.gauge {
+  position: relative;
+  flex: 1;
+  min-width: 120px;
+  height: 6px;
+  background: #1e222d;
+  border-radius: 3px;
+}
+
+.gaugeLow,
+.gaugeHigh {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.gaugeLow {
+  left: 0;
+  background: rgba(38, 166, 154, 0.25);
+  border-radius: 3px 0 0 3px;
+}
+
+.gaugeHigh {
+  right: 0;
+  background: rgba(239, 83, 80, 0.25);
+  border-radius: 0 3px 3px 0;
+}
+
+.gaugeMarker {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #d1d4dc;
+  border: 2px solid #0b0e11;
+}
+
+.gaugeMarker.overbought {
+  background: #ef5350;
+}
+
+.gaugeMarker.oversold {
+  background: #26a69a;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9198a1;
+  background: #1e222d;
+}
+
+.badge.overbought {
+  color: #ef5350;
+  background: rgba(239, 83, 80, 0.12);
+}
+
+.badge.oversold {
+  color: #26a69a;
+  background: rgba(38, 166, 154, 0.12);
 }

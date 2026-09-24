@@ -1,0 +1,15 @@
+.link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: #6a6f7a;
+  flex-shrink: 0;
+}
+
+.link:hover {
+  background: #2a2e39;
+  color: #ffd700;
+}

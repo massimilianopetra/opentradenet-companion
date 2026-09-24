@@ -1,5 +1,5 @@
 /**
- * Mirrors the indicator math in opentradenet_bot/candle_chart.py (_ema,
+ * Mirrors the indicator math in opentradenet_bot/candle_chart.py (_ema, _rsi,
  * _linear_regression_channel, _macd) so the webapp's overlays match the
  * bot's /chart command exactly, computed here in TS against whatever
  * timeframe is currently displayed (15m/1h/1d/1w).
@@ -128,4 +128,32 @@ export function macd(
   }
 
   return { macdLine, signalLine, histogram };
+}
+
+/**
+ * Wilder RSI, same as candle_chart.py's _rsi: seeded with the simple mean of
+ * the first `period` gains/losses, first value emitted at index period + 1.
+ */
+export function rsi(closes: number[], period = 14): (number | null)[] {
+  const out: (number | null)[] = new Array(closes.length).fill(null);
+  if (closes.length - 1 < period) return out;
+
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const delta = closes[i] - closes[i - 1];
+    if (delta > 0) avgGain += delta;
+    else avgLoss -= delta;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  for (let i = period + 1; i < closes.length; i++) {
+    const delta = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(delta, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-delta, 0)) / period;
+    const rs = avgLoss !== 0 ? avgGain / avgLoss : 1e9;
+    out[i] = 100 - 100 / (1 + rs);
+  }
+  return out;
 }

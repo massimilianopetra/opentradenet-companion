@@ -55,3 +55,27 @@
   color: #4a4e59;
   cursor: default;
 }
+
+.nav li.group {
+  flex-direction: column;
+}
+
+.groupActive {
+  color: #d1d4dc !important;
+  font-weight: 600;
+}
+
+.subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 2px 0 0 12px;
+  padding-left: 8px;
+  border-left: 1px solid #2a2e39;
+}
+
+.subnav a {
+  padding: 7px 12px;
+  font-size: 13px;
+}

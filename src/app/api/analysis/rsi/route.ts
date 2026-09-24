@@ -2,17 +2,27 @@ import { NextResponse } from "next/server";
 import { listCandleSymbols, readSymbolSeries } from "@/lib/analysisData";
 import { readSymbolsInfo } from "@/lib/symbolInfoServer";
 import { splitDescription } from "@/lib/symbolInfo";
-import { computeVolatility, type VolatilityRow } from "@/lib/volatility";
-
-const MAX_DAYS = 365;
+import {
+  RSI_TIMEFRAMES,
+  computeRsiStats,
+  type RsiRow,
+  type RsiTimeframe,
+} from "@/lib/rsiAnalysis";
 
 export async function GET(request: Request) {
-  const daysParam = Number(
-    new URL(request.url).searchParams.get("days") ?? "20"
-  );
-  if (!Number.isInteger(daysParam) || daysParam < 1 || daysParam > MAX_DAYS) {
+  const params = new URL(request.url).searchParams;
+  const tf = (params.get("tf") ?? "1h") as RsiTimeframe;
+  const period = Number(params.get("period") ?? "14");
+
+  if (!RSI_TIMEFRAMES.includes(tf)) {
     return NextResponse.json(
-      { error: `days must be an integer between 1 and ${MAX_DAYS}` },
+      { error: `tf must be one of ${RSI_TIMEFRAMES.join(", ")}` },
+      { status: 400 }
+    );
+  }
+  if (!Number.isInteger(period) || period < 2 || period > 100) {
+    return NextResponse.json(
+      { error: "period must be an integer between 2 and 100" },
       { status: 400 }
     );
   }
@@ -31,15 +41,17 @@ export async function GET(request: Request) {
   const info = await readSymbolsInfo();
 
   const rows = await Promise.all(
-    symbols.map(async (symbol): Promise<VolatilityRow | null> => {
+    symbols.map(async (symbol): Promise<RsiRow | null> => {
       try {
         const series = await readSymbolSeries(symbol);
         if (!series) return null;
-        const stats = computeVolatility(
-          series.completeDaily,
-          daysParam,
-          series.lastPrice
-        );
+        const candles =
+          tf === "15m"
+            ? series.recent15m
+            : tf === "1h"
+              ? series.hourly
+              : series.daily;
+        const stats = computeRsiStats(candles, period);
         if (!stats) return null;
         return {
           symbol,
@@ -53,9 +65,10 @@ export async function GET(request: Request) {
   );
 
   return NextResponse.json({
-    days: daysParam,
+    tf,
+    period,
     rows: rows
-      .filter((r): r is VolatilityRow => r !== null)
-      .sort((a, b) => b.bodyAvg - a.bodyAvg),
+      .filter((r): r is RsiRow => r !== null)
+      .sort((a, b) => b.rsi - a.rsi),
   });
 }
