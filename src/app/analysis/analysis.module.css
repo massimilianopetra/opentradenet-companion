@@ -167,6 +167,13 @@
   text-align: right;
 }
 
+/* Values with a unit suffix (e.g. "+0.195% / 1h") need more room. */
+.barCell .numWide {
+  width: 104px;
+  flex: none;
+  white-space: nowrap;
+}
+
 .barTrack {
   flex: 1;
   min-width: 80px;

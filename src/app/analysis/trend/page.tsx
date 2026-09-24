@@ -261,7 +261,7 @@ export default function TrendPage() {
                     <td>
                       <div className={styles.barCell}>
                         <span
-                          className={`${styles.num} ${up ? styles.up : styles.down}`}
+                          className={`${styles.num} ${styles.numWide} ${up ? styles.up : styles.down}`}
                         >
                           {signed(r.slopePercent, Math.abs(r.slopePercent) < 0.01 ? 4 : 3)}
                           % / {tf}
