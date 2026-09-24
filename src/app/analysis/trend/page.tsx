@@ -13,20 +13,21 @@ import {
 } from "@/lib/trendAnalysis";
 import styles from "../analysis.module.css";
 
-/** R² at or above this counts as a "clean" trend. */
+/** R² at or above this counts as a "clean" trend (highlighted in the table). */
 const STRONG_R2 = 0.7;
+/** Minimum-R² presets; 0 = no filter. */
+const R2_OPTIONS = [0, 0.3, 0.5, 0.7, 0.9] as const;
 
 type SortKey = keyof Pick<
   TrendRow,
   "symbol" | "slopePercent" | "windowPercent" | "r2" | "channelSigma" | "lastPrice"
 >;
-type Filter = "all" | "up" | "down" | "strong";
+type Filter = "all" | "up" | "down";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "Tutti" },
   { key: "up", label: "Rialzisti" },
   { key: "down", label: "Ribassisti" },
-  { key: "strong", label: `Trend pulito (R² ≥ ${STRONG_R2})` },
 ];
 
 const COLUMNS: { key: SortKey; label: string; title: string }[] = [
@@ -60,8 +61,6 @@ const matchesFilter = (r: TrendRow, filter: Filter) => {
       return r.slopePercent > 0;
     case "down":
       return r.slopePercent < 0;
-    case "strong":
-      return r.r2 >= STRONG_R2;
     default:
       return true;
   }
@@ -78,6 +77,7 @@ export default function TrendPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [minR2, setMinR2] = useState<number>(0);
   const [sortKey, setSortKey] = useState<SortKey>("slopePercent");
   const [sortDesc, setSortDesc] = useState(true);
   const requestKey = `${tf}:${bars}`;
@@ -110,14 +110,19 @@ export default function TrendPage() {
     };
   }, [tf, bars]);
 
-  const counts = useMemo(
-    () =>
-      Object.fromEntries(
-        FILTERS.map((f) => [
-          f.key,
-          rows.filter((r) => matchesFilter(r, f.key)).length,
-        ])
-      ) as Record<Filter, number>,
+  // Direction counts reflect the R² threshold, so they match what's shown.
+  const counts = useMemo(() => {
+    const passing = rows.filter((r) => r.r2 >= minR2);
+    return Object.fromEntries(
+      FILTERS.map((f) => [
+        f.key,
+        passing.filter((r) => matchesFilter(r, f.key)).length,
+      ])
+    ) as Record<Filter, number>;
+  }, [rows, minR2]);
+
+  const r2Counts = useMemo(
+    () => R2_OPTIONS.map((t) => rows.filter((r) => r.r2 >= t).length),
     [rows]
   );
 
@@ -125,6 +130,7 @@ export default function TrendPage() {
     const q = query.trim().toLowerCase();
     const filtered = rows.filter(
       (r) =>
+        r.r2 >= minR2 &&
         matchesFilter(r, filter) &&
         (!q ||
           r.symbol.toLowerCase().includes(q) ||
@@ -139,7 +145,7 @@ export default function TrendPage() {
       }
       return ((av as number) - (bv as number)) * dir;
     });
-  }, [rows, query, filter, sortKey, sortDesc]);
+  }, [rows, query, filter, minR2, sortKey, sortDesc]);
 
   const slopeMax = useMemo(
     () => Math.max(0, ...rows.map((r) => Math.abs(r.slopePercent))),
@@ -205,17 +211,35 @@ export default function TrendPage() {
             <> {shortHistory} simboli hanno meno storico e usano meno candele (esclusi quelli sotto la metà).</>
           )}
         </p>
-        <div className={styles.group}>
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              className={f.key === filter ? styles.active : styles.button}
-              onClick={() => setFilter(f.key)}
-            >
-              {f.label} <span className={styles.count}>{counts[f.key]}</span>
-            </button>
-          ))}
+        <div className={styles.controls}>
+          <div
+            className={styles.group}
+            title="R² minimo: quanto il prezzo deve seguire la retta"
+          >
+            {R2_OPTIONS.map((t, i) => (
+              <button
+                key={t}
+                type="button"
+                className={t === minR2 ? styles.active : styles.button}
+                onClick={() => setMinR2(t)}
+              >
+                {t === 0 ? "R² tutti" : `R² ≥ ${t}`}{" "}
+                <span className={styles.count}>{r2Counts[i]}</span>
+              </button>
+            ))}
+          </div>
+          <div className={styles.group}>
+            {FILTERS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                className={f.key === filter ? styles.active : styles.button}
+                onClick={() => setFilter(f.key)}
+              >
+                {f.label} <span className={styles.count}>{counts[f.key]}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
