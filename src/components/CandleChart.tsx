@@ -19,6 +19,13 @@ import type { Candle } from "@/lib/candles";
 import { ema, linearRegressionChannel, macd } from "@/lib/indicators";
 import { RegressionChannelPrimitive } from "./regressionChannelPrimitive";
 import { MeasurePrimitive, type MeasurePoint } from "./measurePrimitive";
+import {
+  SegmentPrimitive,
+  distanceToSegment,
+  type Segment,
+  type SegmentPoint,
+} from "./segmentPrimitive";
+import { StrokePrimitive, type Stroke, type StrokePoint } from "./strokePrimitive";
 import { drawLegendBox, type LegendItem } from "./chartLegendCanvas";
 import styles from "./CandleChart.module.css";
 
@@ -34,7 +41,8 @@ const SIGNAL_COLOR = "#ffd700";
 
 const HLINE_PALETTE = ["#ff9f43", "#5b8def", "#ef5350", "#26a69a", "#a78bfa", "#d1d4dc"];
 
-type Tool = "measure" | "hline" | "delete" | null;
+type Tool = "measure" | "hline" | "pencil" | "delete" | null;
+type LineMode = "horizontal" | "segment";
 
 const DELETE_HIT_TOLERANCE_PX = 8;
 
@@ -85,6 +93,30 @@ function HLineIcon() {
         strokeWidth="3"
         strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+function SegmentIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <line x1="5" y1="19" x2="19" y2="5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx="5" cy="19" r="2.5" fill="currentColor" />
+      <circle cx="19" cy="5" r="2.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 20l1-4.5L15.5 5a2.1 2.1 0 0 1 3 3L8 18.5 4 20z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M13.5 7l3 3" stroke="currentColor" strokeWidth="1.5" />
     </svg>
   );
 }
@@ -157,12 +189,20 @@ export default function CandleChart({
   const hlinesRef = useRef<IPriceLine[]>([]);
   const activeToolRef = useRef<Tool>(null);
   const hlineColorRef = useRef(HLINE_PALETTE[0]);
+  const lineModeRef = useRef<LineMode>("horizontal");
+  const segmentPrimitiveRef = useRef<SegmentPrimitive | null>(null);
+  const segmentsRef = useRef<Segment[]>([]);
+  const segmentAnchorRef = useRef<SegmentPoint | null>(null);
+  const strokePrimitiveRef = useRef<StrokePrimitive | null>(null);
+  const strokesRef = useRef<Stroke[]>([]);
 
   const [showRegression, setShowRegression] = useState(false);
   const [regressionBars, setRegressionBars] = useState<number | undefined>(240);
   const [activeTool, setActiveTool] = useState<Tool>(null);
   const [measureStep, setMeasureStep] = useState(0);
   const [hlineColor, setHlineColor] = useState(HLINE_PALETTE[0]);
+  const [lineMode, setLineMode] = useState<LineMode>("horizontal");
+  const [segmentPending, setSegmentPending] = useState(false);
 
   // ── chart + candles + EMA + MACD (rebuilt only when the candle set changes) ──
   useEffect(() => {
@@ -248,14 +288,28 @@ export default function CandleChart({
     measurePrimitiveRef.current = measurePrimitive;
     hlinesRef.current = [];
 
+    const segmentPrimitive = new SegmentPrimitive();
+    candleSeries.attachPrimitive(segmentPrimitive);
+    segmentPrimitiveRef.current = segmentPrimitive;
+    segmentsRef.current = [];
+    segmentAnchorRef.current = null;
+
+    const strokePrimitive = new StrokePrimitive();
+    candleSeries.attachPrimitive(strokePrimitive);
+    strokePrimitiveRef.current = strokePrimitive;
+    strokesRef.current = [];
+
     const handleChartClick = (param: MouseEventParams<Time>) => {
       const tool = activeToolRef.current;
-      if (!tool) return;
+      if (!tool || tool === "pencil") return;
       if (param.point === undefined || param.paneIndex !== 0) return;
 
       if (tool === "delete") {
         const lines = hlinesRef.current;
-        const clickY = param.point.y;
+        const segments = segmentsRef.current;
+        const strokes = strokesRef.current;
+        const { x: clickX, y: clickY } = param.point;
+        let closestKind: "hline" | "segment" | "stroke" = "hline";
         let closestIndex = -1;
         let closestDist = Infinity;
         lines.forEach((line, i) => {
@@ -264,12 +318,47 @@ export default function CandleChart({
           const dist = Math.abs(y - clickY);
           if (dist < closestDist) {
             closestDist = dist;
+            closestKind = "hline";
             closestIndex = i;
           }
         });
+        segments.forEach((segment, i) => {
+          const a = segmentPrimitive.toCoordinates(segment.a);
+          const b = segmentPrimitive.toCoordinates(segment.b);
+          if (!a || !b) return;
+          const dist = distanceToSegment(clickX, clickY, a, b);
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestKind = "segment";
+            closestIndex = i;
+          }
+        });
+        strokes.forEach((stroke, i) => {
+          const coords = stroke.points
+            .map((p) => strokePrimitive.toCoordinates(p))
+            .filter((c): c is { x: number; y: number } => c != null);
+          coords.forEach((c, j) => {
+            const dist = distanceToSegment(clickX, clickY, c, coords[j + 1] ?? c);
+            if (dist < closestDist) {
+              closestDist = dist;
+              closestKind = "stroke";
+              closestIndex = i;
+            }
+          });
+        });
         if (closestIndex !== -1 && closestDist <= DELETE_HIT_TOLERANCE_PX) {
-          const [line] = lines.splice(closestIndex, 1);
-          candleSeries.removePriceLine(line);
+          if (closestKind === "hline") {
+            const [line] = lines.splice(closestIndex, 1);
+            candleSeries.removePriceLine(line);
+          } else if (closestKind === "stroke") {
+            strokes.splice(closestIndex, 1);
+            strokePrimitive.setStrokes([...strokes]);
+            chart.applyOptions({});
+          } else {
+            segments.splice(closestIndex, 1);
+            segmentPrimitive.setSegments([...segments]);
+            chart.applyOptions({});
+          }
         }
         return;
       }
@@ -289,6 +378,21 @@ export default function CandleChart({
         measurePrimitive.setPoints(next);
         setMeasureStep(next.length);
         chart.applyOptions({});
+      } else if (tool === "hline" && lineModeRef.current === "segment") {
+        const point: SegmentPoint = { time: param.time as UTCTimestamp, price };
+        const anchor = segmentAnchorRef.current;
+        if (!anchor) {
+          segmentAnchorRef.current = point;
+          segmentPrimitive.setPending({ anchor: point, cursor: null, color: hlineColorRef.current });
+          setSegmentPending(true);
+        } else {
+          segmentsRef.current.push({ a: anchor, b: point, color: hlineColorRef.current });
+          segmentPrimitive.setSegments([...segmentsRef.current]);
+          segmentAnchorRef.current = null;
+          segmentPrimitive.setPending(null);
+          setSegmentPending(false);
+        }
+        chart.applyOptions({});
       } else if (tool === "hline") {
         const line = candleSeries.createPriceLine({
           price,
@@ -303,6 +407,69 @@ export default function CandleChart({
     };
     chart.subscribeClick(handleChartClick);
 
+    // Live preview of the segment being drawn, from the first anchor to the cursor.
+    const handleCrosshairMove = (param: MouseEventParams<Time>) => {
+      const anchor = segmentAnchorRef.current;
+      if (!anchor) return;
+      let cursor: SegmentPoint | null = null;
+      if (param.point && param.time !== undefined && param.paneIndex === 0) {
+        const price = candleSeries.coordinateToPrice(param.point.y);
+        if (price != null) cursor = { time: param.time as UTCTimestamp, price };
+      }
+      segmentPrimitive.setPending({ anchor, cursor, color: hlineColorRef.current });
+      chart.applyOptions({});
+    };
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+
+    // ── pencil: freehand strokes via raw pointer events (chart panning is ──
+    // disabled while the pencil is active, see the effect further down).
+    let currentStroke: Stroke | null = null;
+    let lastPenPos: { x: number; y: number } | null = null;
+
+    const penPosition = (e: PointerEvent) => {
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const paneHeight = chart.panes()[0]?.getHeight() ?? PRICE_PANE_HEIGHT;
+      if (x < 0 || x > chart.timeScale().width() || y < 0 || y > paneHeight) return null;
+      const logical = chart.timeScale().coordinateToLogical(x);
+      const price = candleSeries.coordinateToPrice(y);
+      if (logical == null || price == null) return null;
+      return { x, y, point: { logical, price } as StrokePoint };
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (activeToolRef.current !== "pencil" || e.button !== 0) return;
+      const pos = penPosition(e);
+      if (!pos) return;
+      e.preventDefault();
+      currentStroke = { points: [pos.point], color: hlineColorRef.current };
+      lastPenPos = pos;
+      strokesRef.current.push(currentStroke);
+      strokePrimitive.setStrokes([...strokesRef.current]);
+      chart.applyOptions({});
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!currentStroke || !lastPenPos) return;
+      const pos = penPosition(e);
+      if (!pos) return;
+      if (Math.hypot(pos.x - lastPenPos.x, pos.y - lastPenPos.y) < 2) return;
+      currentStroke.points.push(pos.point);
+      lastPenPos = pos;
+      strokePrimitive.setStrokes([...strokesRef.current]);
+      chart.applyOptions({});
+    };
+
+    const handlePointerUp = () => {
+      currentStroke = null;
+      lastPenPos = null;
+    };
+
+    container.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || !activeToolRef.current) return;
       activeToolRef.current = null;
@@ -313,6 +480,12 @@ export default function CandleChart({
         chart.applyOptions({});
       }
       setMeasureStep(0);
+      if (segmentAnchorRef.current) {
+        segmentAnchorRef.current = null;
+        segmentPrimitive.setPending(null);
+        chart.applyOptions({});
+      }
+      setSegmentPending(false);
     };
     window.addEventListener("keydown", handleKeyDown);
 
@@ -416,13 +589,23 @@ export default function CandleChart({
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleKeyDown);
       chart.unsubscribeClick(handleChartClick);
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      container.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
       measurePrimitiveRef.current = null;
       measurePointsRef.current = [];
       hlinesRef.current = [];
+      segmentPrimitiveRef.current = null;
+      segmentsRef.current = [];
+      segmentAnchorRef.current = null;
+      strokePrimitiveRef.current = null;
+      strokesRef.current = [];
       setMeasureStep(0);
+      setSegmentPending(false);
     };
   }, [candles]);
 
@@ -490,9 +673,34 @@ export default function CandleChart({
     activeToolRef.current = activeTool;
   }, [activeTool]);
 
+  // Dragging with the pencil must draw, not pan the chart.
+  useEffect(() => {
+    const drawing = activeTool === "pencil";
+    chartRef.current?.applyOptions({
+      handleScroll: { pressedMouseMove: !drawing, horzTouchDrag: !drawing, vertTouchDrag: !drawing },
+    });
+  }, [activeTool, candles]);
+
   useEffect(() => {
     hlineColorRef.current = hlineColor;
   }, [hlineColor]);
+
+  useEffect(() => {
+    lineModeRef.current = lineMode;
+  }, [lineMode]);
+
+  const cancelPendingSegment = () => {
+    if (!segmentAnchorRef.current) return;
+    segmentAnchorRef.current = null;
+    segmentPrimitiveRef.current?.setPending(null);
+    setSegmentPending(false);
+    chartRef.current?.applyOptions({});
+  };
+
+  const handleSelectLineMode = (mode: LineMode) => {
+    if (mode !== "segment") cancelPendingSegment();
+    setLineMode(mode);
+  };
 
   const handleSelectTool = (tool: Exclude<Tool, null>) => {
     const next = activeTool === tool ? null : tool;
@@ -503,6 +711,7 @@ export default function CandleChart({
       setMeasureStep(0);
       chartRef.current?.applyOptions({});
     }
+    if (activeTool === "hline" && next !== "hline") cancelPendingSegment();
   };
 
   const handleExport = () => {
@@ -618,13 +827,34 @@ export default function CandleChart({
             type="button"
             className={[styles.toolButton, activeTool === "hline" ? styles.toolButtonActive : ""].join(" ")}
             onClick={() => handleSelectTool("hline")}
-            title="Disegna righe orizzontali di supporto/resistenza (Esc per uscire)"
+            title="Disegna righe orizzontali o segmenti tra due punti (Esc per uscire)"
             aria-pressed={activeTool === "hline"}
           >
             <HLineIcon />
           </button>
           {activeTool === "hline" && (
             <div className={[styles.toolFlyout, styles.toolFlyoutInteractive].join(" ")}>
+              <div className={styles.modeGroup}>
+                <button
+                  type="button"
+                  className={[styles.modeButton, lineMode === "horizontal" ? styles.modeButtonActive : ""].join(" ")}
+                  onClick={() => handleSelectLineMode("horizontal")}
+                  title="Riga orizzontale (un clic)"
+                  aria-pressed={lineMode === "horizontal"}
+                >
+                  <HLineIcon />
+                </button>
+                <button
+                  type="button"
+                  className={[styles.modeButton, lineMode === "segment" ? styles.modeButtonActive : ""].join(" ")}
+                  onClick={() => handleSelectLineMode("segment")}
+                  title="Segmento tra due punti, anche obliquo (due clic)"
+                  aria-pressed={lineMode === "segment"}
+                >
+                  <SegmentIcon />
+                </button>
+              </div>
+              <span className={styles.flyoutSeparator} />
               {HLINE_PALETTE.map((color) => (
                 <button
                   key={color}
@@ -639,6 +869,42 @@ export default function CandleChart({
                   aria-pressed={hlineColor === color}
                 />
               ))}
+              {lineMode === "segment" && (
+                <span className={styles.flyoutHint}>
+                  {segmentPending ? "Clicca il secondo punto" : "Clicca il primo punto"}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className={styles.toolRow}>
+          <button
+            type="button"
+            className={[styles.toolButton, activeTool === "pencil" ? styles.toolButtonActive : ""].join(" ")}
+            onClick={() => handleSelectTool("pencil")}
+            title="Matita: disegno a mano libera (tieni premuto e trascina, Esc per uscire)"
+            aria-pressed={activeTool === "pencil"}
+          >
+            <PencilIcon />
+          </button>
+          {activeTool === "pencil" && (
+            <div className={[styles.toolFlyout, styles.toolFlyoutInteractive].join(" ")}>
+              {HLINE_PALETTE.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={[
+                    styles.colorDot,
+                    hlineColor === color ? styles.colorDotActive : "",
+                  ].join(" ")}
+                  style={{ background: color }}
+                  onClick={() => setHlineColor(color)}
+                  title="Disegna in questo colore"
+                  aria-pressed={hlineColor === color}
+                />
+              ))}
+              <span className={styles.flyoutHint}>Tieni premuto e trascina</span>
             </div>
           )}
         </div>
@@ -651,13 +917,13 @@ export default function CandleChart({
               activeTool === "delete" ? styles.toolButtonDanger : "",
             ].join(" ")}
             onClick={() => handleSelectTool("delete")}
-            title="Elimina una riga orizzontale (clicca sulla riga, Esc per uscire)"
+            title="Elimina una riga, un segmento o un tratto a matita (clicca sopra, Esc per uscire)"
             aria-pressed={activeTool === "delete"}
           >
             <TrashIcon />
           </button>
           {activeTool === "delete" && (
-            <div className={styles.toolFlyout}>Clicca una riga per eliminarla</div>
+            <div className={styles.toolFlyout}>Clicca un disegno per eliminarlo</div>
           )}
         </div>
 
