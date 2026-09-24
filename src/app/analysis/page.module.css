@@ -201,3 +201,37 @@
   text-align: center;
   color: #666;
 }
+
+.symbolCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.symbolCell .name {
+  margin-left: 0;
+}
+
+.chartLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: #6a6f7a;
+  flex-shrink: 0;
+}
+
+.chartLink:hover {
+  background: #2a2e39;
+  color: #ffd700;
+}
+
+.barUp {
+  background: #26a69a;
+}
+
+.barDown {
+  background: #ef5350;
+}

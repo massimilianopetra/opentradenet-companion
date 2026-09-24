@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { VolatilityRow } from "@/lib/volatility";
 import styles from "./page.module.css";
@@ -41,8 +42,27 @@ const COLUMNS: { key: SortKey; label: string; title: string }[] = [
   { key: "days", label: "Giorni", title: "Giorni completi disponibili nel periodo" },
 ];
 
+type NumericKey = Exclude<SortKey, "symbol">;
+
+const NUMERIC_COLUMNS = COLUMNS.map((c) => c.key).filter(
+  (k): k is NumericKey => k !== "symbol"
+);
+
 const pct = (v: number, signed = false) =>
   `${signed && v > 0 ? "+" : ""}${v.toFixed(2)}%`;
+
+function formatValue(key: NumericKey, value: number): string {
+  switch (key) {
+    case "upDaysPercent":
+      return `${value.toFixed(0)}%`;
+    case "lastBody":
+      return pct(value, true);
+    case "days":
+      return String(value);
+    default:
+      return pct(value);
+  }
+}
 
 export default function AnalysisPage() {
   const [days, setDays] = useState(20);
@@ -99,9 +119,11 @@ export default function AnalysisPage() {
     });
   }, [rows, query, sortKey, sortDesc]);
 
-  const maxBody = useMemo(
-    () => Math.max(0, ...rows.map((r) => r.bodyAvg)),
-    [rows]
+  // The bar follows the sorted column (bodyAvg while sorting by symbol).
+  const barKey: NumericKey = sortKey === "symbol" ? "bodyAvg" : sortKey;
+  const barMax = useMemo(
+    () => Math.max(0, ...rows.map((r) => Math.abs(r[barKey]))),
+    [rows, barKey]
   );
 
   const handleSort = (key: SortKey) => {
@@ -118,7 +140,7 @@ export default function AnalysisPage() {
       <div className={styles.header}>
         <h1>
           Analisi{" "}
-          <span className={styles.headerSub}>— Volatilità apertura/chiusura</span>
+          <span className={styles.headerSub}>— Volatilità</span>
         </h1>
         <div className={styles.controls}>
           <input
@@ -175,40 +197,66 @@ export default function AnalysisPage() {
                 <tr key={r.symbol}>
                   <td className={styles.rank}>{i + 1}</td>
                   <td>
-                    <span className={styles.symbol}>{r.symbol}</span>
-                    {r.name && <span className={styles.name}>{r.name}</span>}
-                  </td>
-                  <td>
-                    <div className={styles.barCell}>
-                      <span className={styles.num}>{pct(r.bodyAvg)}</span>
-                      <span className={styles.barTrack}>
-                        <span
-                          className={styles.bar}
-                          style={{
-                            width: `${maxBody > 0 ? (r.bodyAvg / maxBody) * 100 : 0}%`,
-                          }}
-                        />
-                      </span>
+                    <div className={styles.symbolCell}>
+                      <Link
+                        href={`/charts?symbol=${encodeURIComponent(r.symbol)}&tf=1d`}
+                        className={styles.chartLink}
+                        title={`Apri il grafico 1d di ${r.symbol}`}
+                        aria-label={`Apri il grafico 1d di ${r.symbol}`}
+                      >
+                        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                          <path d="M2 2v12h12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M4.5 10.5 7.5 7l2 2 4-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </Link>
+                      <span className={styles.symbol}>{r.symbol}</span>
+                      {r.name && <span className={styles.name}>{r.name}</span>}
                     </div>
                   </td>
-                  <td className={styles.num}>{pct(r.bodyMax)}</td>
-                  <td className={styles.num}>{pct(r.rangeAvg)}</td>
-                  <td className={styles.num}>{r.upDaysPercent.toFixed(0)}%</td>
-                  <td
-                    className={`${styles.num} ${r.lastBody >= 0 ? styles.up : styles.down}`}
-                  >
-                    {pct(r.lastBody, true)}
-                  </td>
-                  <td
-                    className={`${styles.num} ${r.days < days ? styles.partial : ""}`}
-                    title={
-                      r.days < days
+                  {NUMERIC_COLUMNS.map((key) => {
+                    const value = r[key];
+                    const className = [
+                      styles.num,
+                      key === "lastBody" && (value >= 0 ? styles.up : styles.down),
+                      key === "days" && r.days < days && styles.partial,
+                    ]
+                      .filter(Boolean)
+                      .join(" ");
+                    const title =
+                      key === "days" && r.days < days
                         ? "Storico più corto del periodo richiesto"
-                        : undefined
+                        : undefined;
+                    const text = formatValue(key, value);
+
+                    if (key !== barKey) {
+                      return (
+                        <td key={key} className={className} title={title}>
+                          {text}
+                        </td>
+                      );
                     }
-                  >
-                    {r.days}
-                  </td>
+                    return (
+                      <td key={key} title={title}>
+                        <div className={styles.barCell}>
+                          <span className={className}>{text}</span>
+                          <span className={styles.barTrack}>
+                            <span
+                              className={`${styles.bar} ${
+                                key === "lastBody"
+                                  ? value >= 0
+                                    ? styles.barUp
+                                    : styles.barDown
+                                  : ""
+                              }`}
+                              style={{
+                                width: `${barMax > 0 ? (Math.abs(value) / barMax) * 100 : 0}%`,
+                              }}
+                            />
+                          </span>
+                        </div>
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
               {visible.length === 0 && (

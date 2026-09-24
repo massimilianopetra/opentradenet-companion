@@ -1,19 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import CandleChart from "@/components/CandleChart";
 import SymbolList from "@/components/SymbolList";
 import SymbolInfoPanel from "@/components/SymbolInfoPanel";
 import TimeframeSelector from "@/components/TimeframeSelector";
-import type { Candle, Timeframe } from "@/lib/candles";
+import { TIMEFRAMES, type Candle, type Timeframe } from "@/lib/candles";
 import { splitDescription, type SymbolInfo } from "@/lib/symbolInfo";
 import type { SymbolSummary } from "@/app/api/symbols/route";
 import styles from "./page.module.css";
 
 export default function ChartsPage() {
+  return (
+    <Suspense>
+      <ChartsView />
+    </Suspense>
+  );
+}
+
+function ChartsView() {
+  // ?symbol=X&tf=1d lets other pages (e.g. Analisi) deep-link to a chart.
+  const searchParams = useSearchParams();
+  const initialSymbol = searchParams.get("symbol")?.toUpperCase() ?? "";
+  const tfParam = searchParams.get("tf") as Timeframe | null;
+  const initialTimeframe: Timeframe =
+    tfParam && TIMEFRAMES.includes(tfParam) ? tfParam : "15m";
+
   const [symbols, setSymbols] = useState<SymbolSummary[]>([]);
   const [symbol, setSymbol] = useState<string>("");
-  const [timeframe, setTimeframe] = useState<Timeframe>("15m");
+  const [timeframe, setTimeframe] = useState<Timeframe>(initialTimeframe);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [candlesFor, setCandlesFor] = useState<string | null>(null);
   const [symbolInfo, setSymbolInfo] = useState<SymbolInfo | null>(null);
@@ -29,10 +45,12 @@ export default function ChartsPage() {
           return;
         }
         setSymbols(data);
-        if (data.length > 0) setSymbol(data[0].symbol);
+        const requested = data.find((s) => s.symbol === initialSymbol);
+        if (requested) setSymbol(requested.symbol);
+        else if (data.length > 0) setSymbol(data[0].symbol);
       })
       .catch((err) => setError(String(err)));
-  }, []);
+  }, [initialSymbol]);
 
   useEffect(() => {
     if (!symbol) return;
